@@ -17,6 +17,10 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+app.get('/', (req, res) => {
+    res.json({ message: 'Property Docs API Server Online', health: '/api/health' });
+});
+
 // Multer for file uploads (memory storage for Cloudinary streaming)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
@@ -142,7 +146,13 @@ async function getFullDatabase(client) {
         feePaid: o.fee_paid,
         expiryDate: o.expiry_date,
         media: o.media || [],
-        createdAt: o.created_at
+        createdAt: o.created_at,
+        price: o.price,
+        sqft: o.sqft,
+        beds: o.beds,
+        baths: o.baths,
+        floors: o.floors,
+        transactionType: o.transaction_type
     }));
 
     // Inquiries
@@ -153,7 +163,15 @@ async function getFullDatabase(client) {
         userName: i.user_name,
         userPhone: i.user_phone,
         userAddress: i.user_address,
-        createdAt: i.created_at
+        createdAt: i.created_at,
+        listingTitle: i.listing_title,
+        listingAddress: i.listing_address,
+        listingPrice: i.listing_price,
+        userEmail: i.user_email,
+        contactMethod: i.contact_method,
+        message: i.message,
+        planTo: i.plan_to,
+        status: i.status
     }));
 
     // Users
@@ -298,8 +316,8 @@ async function saveFullDatabase(data) {
         // --- Insert owner listings ---
         for (const o of (data.ownerListings || [])) {
             await client.query(
-                `INSERT INTO owner_listings (id, category, title, location, landmark, street, pincode, location_privacy, lat, lng, rent_amount, bogithu_amount, bogithu_years, description, contact_name, contact_phone, status, media, created_at, owner_uid, owner_phone, owner_email, is_free_upload, fee_paid, expiry_date)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+                `INSERT INTO owner_listings (id, category, title, location, landmark, street, pincode, location_privacy, lat, lng, rent_amount, bogithu_amount, bogithu_years, description, contact_name, contact_phone, status, media, created_at, owner_uid, owner_phone, owner_email, is_free_upload, fee_paid, expiry_date, price, sqft, beds, baths, floors, transaction_type)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
                  ON CONFLICT (id) DO UPDATE SET
                     category = EXCLUDED.category,
                     title = EXCLUDED.title,
@@ -323,7 +341,13 @@ async function saveFullDatabase(data) {
                     owner_email = EXCLUDED.owner_email,
                     is_free_upload = EXCLUDED.is_free_upload,
                     fee_paid = EXCLUDED.fee_paid,
-                    expiry_date = EXCLUDED.expiry_date`,
+                    expiry_date = EXCLUDED.expiry_date,
+                    price = EXCLUDED.price,
+                    sqft = EXCLUDED.sqft,
+                    beds = EXCLUDED.beds,
+                    baths = EXCLUDED.baths,
+                    floors = EXCLUDED.floors,
+                    transaction_type = EXCLUDED.transaction_type`,
                 [
                     o.id, 
                     o.category || 'rental_house', 
@@ -349,7 +373,13 @@ async function saveFullDatabase(data) {
                     o.ownerEmail || '',
                     o.isFreeUpload ?? true,
                     o.feePaid || 0,
-                    o.expiryDate || null
+                    o.expiryDate || null,
+                    parseFloat(String(o.price || 0).replace(/,/g, '')) || 0,
+                    o.sqft || '',
+                    parseInt(String(o.beds || 0).replace(/,/g, ''), 10) || 0,
+                    parseInt(String(o.baths || 0).replace(/,/g, ''), 10) || 0,
+                    parseInt(String(o.floors || 0).replace(/,/g, ''), 10) || 0,
+                    o.transactionType || 'all'
                 ]
             );
         }
@@ -382,13 +412,36 @@ async function saveFullDatabase(data) {
         // --- Insert/Update inquiries ---
         for (const i of (data.inquiries || [])) {
             await client.query(
-                `INSERT INTO inquiries (id, listing_id, user_name, user_phone, user_address, created_at)
-                 VALUES ($1,$2,$3,$4,$5,$6)
+                `INSERT INTO inquiries (id, listing_id, user_name, user_phone, user_address, created_at, listing_title, listing_address, listing_price, user_email, contact_method, message, plan_to, status)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                  ON CONFLICT (id) DO UPDATE SET
                     user_name = EXCLUDED.user_name,
                     user_phone = EXCLUDED.user_phone,
-                    user_address = EXCLUDED.user_address`,
-                [i.id, i.listingId, i.userName, i.userPhone, i.userAddress || '', i.createdAt || new Date()]
+                    user_address = EXCLUDED.user_address,
+                    listing_title = EXCLUDED.listing_title,
+                    listing_address = EXCLUDED.listing_address,
+                    listing_price = EXCLUDED.listing_price,
+                    user_email = EXCLUDED.user_email,
+                    contact_method = EXCLUDED.contact_method,
+                    message = EXCLUDED.message,
+                    plan_to = EXCLUDED.plan_to,
+                    status = EXCLUDED.status`,
+                [
+                    i.id, 
+                    i.listingId, 
+                    i.userName, 
+                    i.userPhone, 
+                    i.userAddress || '', 
+                    i.createdAt || new Date(),
+                    i.listingTitle || '',
+                    i.listingAddress || '',
+                    i.listingPrice || '',
+                    i.userEmail || '',
+                    i.contactMethod || 'email',
+                    i.message || '',
+                    i.planTo || '',
+                    i.status || 'unread'
+                ]
             );
         }
 
