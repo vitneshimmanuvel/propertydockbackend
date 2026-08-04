@@ -144,8 +144,8 @@ async function getFullDatabase(client) {
         ownerEmail: o.owner_email,
         isFreeUpload: o.is_free_upload,
         feePaid: o.fee_paid,
-        expiryDate: o.expiry_date,
         media: o.media || [],
+        internalDocuments: o.internal_documents || [],
         createdAt: o.created_at,
         price: o.price,
         sqft: o.sqft,
@@ -194,10 +194,25 @@ async function getFullDatabase(client) {
         createdAt: f.created_at
     }));
 
+    // Clients
+    const clientRows = await db.query('SELECT * FROM clients ORDER BY created_at DESC');
+    const clients = clientRows.rows.map(c => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        alternatePhone: c.alternate_phone || '',
+        email: c.email || '',
+        address: c.address || '',
+        notes: c.notes || '',
+        clientType: c.client_type || 'Buyer',
+        createdAt: c.created_at,
+        updatedAt: c.updated_at
+    }));
+
     // Active layout ID (default to first)
     const activeLayoutId = layouts.length > 0 ? layouts[0].id : 'default';
 
-    return { activeLayoutId, layouts, bookings, videos, settings, ownerListings, inquiries, users, userFavorites };
+    return { activeLayoutId, layouts, bookings, videos, settings, ownerListings, inquiries, users, userFavorites, clients };
 }
 
 // ============================================================
@@ -209,7 +224,7 @@ async function saveFullDatabase(data) {
         await client.query('BEGIN');
         
         // Lock tables to prevent concurrent save operations from deadlocking
-        await client.query('LOCK TABLE settings, inquiries, user_favorites, hatches, roads, plots, layouts, owner_listings, videos, bookings, users IN EXCLUSIVE MODE');
+        await client.query('LOCK TABLE settings, inquiries, user_favorites, hatches, roads, plots, layouts, owner_listings, videos, bookings, users, clients IN EXCLUSIVE MODE');
 
         // --- Clear existing data (Only layout structures & owners) ---
         await client.query('DELETE FROM inquiries');
@@ -220,6 +235,7 @@ async function saveFullDatabase(data) {
         await client.query('DELETE FROM layouts');
         await client.query('DELETE FROM owner_listings');
         await client.query('DELETE FROM users');
+        await client.query('DELETE FROM clients');
 
         // --- Insert layouts + children ---
         for (const layout of (data.layouts || [])) {
@@ -316,8 +332,8 @@ async function saveFullDatabase(data) {
         // --- Insert owner listings ---
         for (const o of (data.ownerListings || [])) {
             await client.query(
-                `INSERT INTO owner_listings (id, category, title, location, landmark, street, pincode, location_privacy, lat, lng, rent_amount, bogithu_amount, bogithu_years, description, contact_name, contact_phone, status, media, created_at, owner_uid, owner_phone, owner_email, is_free_upload, fee_paid, expiry_date, price, sqft, beds, baths, floors, transaction_type)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
+                `INSERT INTO owner_listings (id, category, title, location, landmark, street, pincode, location_privacy, lat, lng, rent_amount, bogithu_amount, bogithu_years, description, contact_name, contact_phone, status, media, created_at, owner_uid, owner_phone, owner_email, is_free_upload, fee_paid, expiry_date, price, sqft, beds, baths, floors, transaction_type, internal_documents)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
                  ON CONFLICT (id) DO UPDATE SET
                     category = EXCLUDED.category,
                     title = EXCLUDED.title,
@@ -347,7 +363,8 @@ async function saveFullDatabase(data) {
                     beds = EXCLUDED.beds,
                     baths = EXCLUDED.baths,
                     floors = EXCLUDED.floors,
-                    transaction_type = EXCLUDED.transaction_type`,
+                    transaction_type = EXCLUDED.transaction_type,
+                    internal_documents = EXCLUDED.internal_documents`,
                 [
                     o.id, 
                     o.category || 'rental_house', 
@@ -379,7 +396,8 @@ async function saveFullDatabase(data) {
                     parseInt(String(o.beds || 0).replace(/,/g, ''), 10) || 0,
                     parseInt(String(o.baths || 0).replace(/,/g, ''), 10) || 0,
                     parseInt(String(o.floors || 0).replace(/,/g, ''), 10) || 0,
-                    o.transactionType || 'all'
+                    o.transactionType || 'all',
+                    JSON.stringify(o.internalDocuments || [])
                 ]
             );
         }
@@ -441,6 +459,34 @@ async function saveFullDatabase(data) {
                     i.message || '',
                     i.planTo || '',
                     i.status || 'unread'
+                ]
+            );
+        }
+
+        // --- Insert manual clients ---
+        for (const c of (data.clients || [])) {
+            await client.query(
+                `INSERT INTO clients (id, name, phone, alternate_phone, email, address, notes, client_type, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 ON CONFLICT (phone) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    alternate_phone = EXCLUDED.alternate_phone,
+                    email = EXCLUDED.email,
+                    address = EXCLUDED.address,
+                    notes = EXCLUDED.notes,
+                    client_type = EXCLUDED.client_type,
+                    updated_at = NOW()`,
+                [
+                    c.id || ('client_' + Date.now() + Math.random()),
+                    c.name || '',
+                    c.phone || '',
+                    c.alternatePhone || '',
+                    c.email || '',
+                    c.address || '',
+                    c.notes || '',
+                    c.clientType || 'Buyer',
+                    c.createdAt || new Date(),
+                    c.updatedAt || new Date()
                 ]
             );
         }

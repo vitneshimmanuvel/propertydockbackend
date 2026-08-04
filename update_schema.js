@@ -24,6 +24,7 @@ async function main() {
         await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS baths INTEGER DEFAULT 0;`);
         await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS floors INTEGER DEFAULT 0;`);
         await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS transaction_type TEXT DEFAULT 'all';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS internal_documents JSONB DEFAULT '[]'::jsonb;`);
 
         // Update inquiries table schema
         await pool.query(`
@@ -44,6 +45,22 @@ async function main() {
         await pool.query(`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS message TEXT DEFAULT '';`);
         await pool.query(`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS plan_to TEXT DEFAULT '';`);
         await pool.query(`ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'unread';`);
+        
+        // Create clients table
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS clients (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                phone TEXT NOT NULL UNIQUE,
+                email TEXT DEFAULT '',
+                address TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                client_type TEXT DEFAULT 'Buyer',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+        `);
+        await pool.query(`ALTER TABLE clients ADD COLUMN IF NOT EXISTS alternate_phone TEXT DEFAULT '';`);
         console.log('Successfully added missing columns and tables');
     } catch (e) {
         console.error('Error:', e.message);
