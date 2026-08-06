@@ -842,6 +842,21 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// --- Global Error Handling Middleware ---
+app.use((err, req, res, next) => {
+    console.error('Unhandled server error:', err);
+    res.status(500).json({ error: 'Internal Server Error', message: err.message });
+});
+
+// Prevent process from crashing on uncaught errors or unhandled promise rejections
+process.on('uncaughtException', (err) => {
+    console.error('⚠️ Uncaught Exception caught (server staying active):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ Unhandled Promise Rejection caught (server staying active):', reason);
+});
+
 // --- Start Server ---
 if (require.main === module) {
     app.listen(PORT, () => {
@@ -851,3 +866,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+
