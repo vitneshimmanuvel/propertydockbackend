@@ -284,7 +284,7 @@ async function run() {
             },
             {
                 type: 'video',
-                url: 'https://www.youtube.com/shorts/6cXawULEjlE?feature=share'
+                url: 'https://www.youtube.com/watch?v=7X8II6J-6mU'
             }
         ]);
         await pool.query(`
