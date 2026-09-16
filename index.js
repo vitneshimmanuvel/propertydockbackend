@@ -66,7 +66,8 @@ async function getFullDatabase(client) {
                 classification: p.classification,
                 category: p.category,
                 isBuilding: p.is_building,
-                isCommon: p.is_common
+                isCommon: p.is_common,
+                viewsCount: p.views_count || 0
             })),
             roads: roads.rows.map(r => ({
                 id: r.id,
@@ -133,6 +134,16 @@ async function getFullDatabase(client) {
         lat: o.lat,
         lng: o.lng,
         rentAmount: o.rent_amount,
+        depositAmount: o.deposit_amount || 0,
+        maintenanceAmount: o.maintenance_amount || 0,
+        furnishing: o.furnishing || '',
+        availableFrom: o.available_from || '',
+        preferredTenants: o.preferred_tenants || '',
+        leaseDuration: o.lease_duration || '',
+        foodPreference: o.food_preference || '',
+        parking: o.parking || '',
+        lockInPeriod: o.lock_in_period || '',
+        noticePeriod: o.notice_period || '',
         bogithuAmount: o.bogithu_amount,
         bogithuYears: o.bogithu_years,
         description: o.description,
@@ -152,7 +163,9 @@ async function getFullDatabase(client) {
         beds: o.beds,
         baths: o.baths,
         floors: o.floors,
-        transactionType: o.transaction_type
+        transactionType: o.transaction_type,
+        viewsCount: o.views_count || 0,
+        clicksCount: o.clicks_count || 0
     }));
 
     // Inquiries
@@ -332,8 +345,8 @@ async function saveFullDatabase(data) {
         // --- Insert owner listings ---
         for (const o of (data.ownerListings || [])) {
             await client.query(
-                `INSERT INTO owner_listings (id, category, title, location, landmark, street, pincode, location_privacy, lat, lng, rent_amount, bogithu_amount, bogithu_years, description, contact_name, contact_phone, status, media, created_at, owner_uid, owner_phone, owner_email, is_free_upload, fee_paid, expiry_date, price, sqft, beds, baths, floors, transaction_type, internal_documents)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+                `INSERT INTO owner_listings (id, category, title, location, landmark, street, pincode, location_privacy, lat, lng, rent_amount, bogithu_amount, bogithu_years, description, contact_name, contact_phone, status, media, created_at, owner_uid, owner_phone, owner_email, is_free_upload, fee_paid, expiry_date, price, sqft, beds, baths, floors, transaction_type, internal_documents, views_count, clicks_count, deposit_amount, maintenance_amount, furnishing, available_from, preferred_tenants, lease_duration, food_preference, parking, lock_in_period, notice_period)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41,$42,$43,$44)
                  ON CONFLICT (id) DO UPDATE SET
                     category = EXCLUDED.category,
                     title = EXCLUDED.title,
@@ -364,7 +377,19 @@ async function saveFullDatabase(data) {
                     baths = EXCLUDED.baths,
                     floors = EXCLUDED.floors,
                     transaction_type = EXCLUDED.transaction_type,
-                    internal_documents = EXCLUDED.internal_documents`,
+                    internal_documents = EXCLUDED.internal_documents,
+                    views_count = COALESCE(EXCLUDED.views_count, owner_listings.views_count, 0),
+                    clicks_count = COALESCE(EXCLUDED.clicks_count, owner_listings.clicks_count, 0),
+                    deposit_amount = EXCLUDED.deposit_amount,
+                    maintenance_amount = EXCLUDED.maintenance_amount,
+                    furnishing = EXCLUDED.furnishing,
+                    available_from = EXCLUDED.available_from,
+                    preferred_tenants = EXCLUDED.preferred_tenants,
+                    lease_duration = EXCLUDED.lease_duration,
+                    food_preference = EXCLUDED.food_preference,
+                    parking = EXCLUDED.parking,
+                    lock_in_period = EXCLUDED.lock_in_period,
+                    notice_period = EXCLUDED.notice_period`,
                 [
                     o.id, 
                     o.category || 'rental_house', 
@@ -397,7 +422,19 @@ async function saveFullDatabase(data) {
                     parseInt(String(o.baths || 0).replace(/,/g, ''), 10) || 0,
                     parseInt(String(o.floors || 0).replace(/,/g, ''), 10) || 0,
                     o.transactionType || 'all',
-                    JSON.stringify(o.internalDocuments || [])
+                    JSON.stringify(o.internalDocuments || []),
+                    parseInt(String(o.viewsCount || o.views || 0), 10) || 0,
+                    parseInt(String(o.clicksCount || o.clicks || 0), 10) || 0,
+                    parseFloat(String(o.depositAmount || 0).replace(/,/g, '')) || 0,
+                    parseFloat(String(o.maintenanceAmount || 0).replace(/,/g, '')) || 0,
+                    o.furnishing || '',
+                    o.availableFrom || '',
+                    o.preferredTenants || '',
+                    o.leaseDuration || '',
+                    o.foodPreference || '',
+                    o.parking || '',
+                    o.lockInPeriod || '',
+                    o.noticePeriod || ''
                 ]
             );
         }
@@ -523,6 +560,330 @@ app.put('/api/database', async (req, res) => {
         console.error('PUT /api/database error:', err);
         res.status(500).json({ error: err.message });
     }
+});
+
+// --- Property View & Click Tracking Endpoint ---
+const handleTrackView = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE owner_listings 
+             SET views_count = COALESCE(views_count, 0) + 1,
+                 clicks_count = COALESCE(clicks_count, 0) + 1,
+                 updated_at = NOW()
+             WHERE id = $1 
+             RETURNING id, views_count, clicks_count`,
+            [id]
+        );
+        if (result.rows.length > 0) {
+            return res.json({ success: true, listing: result.rows[0] });
+        }
+        // Try plots table if not in owner_listings
+        const plotResult = await pool.query(
+            `UPDATE plots
+             SET views_count = COALESCE(views_count, 0) + 1
+             WHERE id = $1
+             RETURNING id, views_count`,
+            [id]
+        );
+        if (plotResult.rows.length > 0) {
+            return res.json({ success: true, plot: plotResult.rows[0] });
+        }
+        res.json({ success: false, message: 'Listing not found in database' });
+    } catch (err) {
+        console.error('POST track view error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+const handleTrackClick = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE owner_listings 
+             SET views_count = COALESCE(views_count, 0) + 1,
+                 clicks_count = COALESCE(clicks_count, 0) + 1,
+                 updated_at = NOW()
+             WHERE id = $1 
+             RETURNING id, views_count, clicks_count`,
+            [id]
+        );
+        if (result.rows.length > 0) {
+            return res.json({ success: true, listing: result.rows[0] });
+        }
+        const plotResult = await pool.query(
+            `UPDATE plots
+             SET views_count = COALESCE(views_count, 0) + 1
+             WHERE id = $1
+             RETURNING id, views_count`,
+            [id]
+        );
+        if (plotResult.rows.length > 0) {
+            return res.json({ success: true, plot: plotResult.rows[0] });
+        }
+        res.json({ success: false, message: 'Listing not found' });
+    } catch (err) {
+        console.error('POST track click error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+app.post('/api/listings/:id/view', handleTrackView);
+app.post('/api/properties/:id/view', handleTrackView);
+app.post('/api/listings/:id/click', handleTrackClick);
+app.post('/api/properties/:id/click', handleTrackClick);
+
+// --- User Inquiries & Leads Endpoints (POST & GET /api/enquiry, /api/inquiries) ---
+const handleCreateEnquiry = async (req, res) => {
+    try {
+        const body = req.body || {};
+        const id = body.id || ('inq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+        const listingId = body.listingId || body.propertyId || body.listing_id || '';
+        const userName = body.userName || body.name || `${body.firstName || ''} ${body.lastName || ''}`.trim() || 'Website Visitor';
+        const userPhone = body.userPhone || body.phone || '';
+        const userEmail = body.userEmail || body.email || '';
+        const userAddress = body.userAddress || body.address || '';
+        const listingTitle = body.listingTitle || body.title || body.propertyName || '';
+        const listingAddress = body.listingAddress || body.location || body.displayAddress || '';
+        const listingPrice = body.listingPrice || body.price || '';
+        const contactMethod = body.contactMethod || 'phone';
+        const message = body.message || body.notes || '';
+        const planTo = body.planTo || '';
+        const status = body.status || 'unread';
+
+        if (!userName && !userPhone && !userEmail) {
+            return res.status(400).json({ error: 'Name, phone number, or email is required to submit an enquiry.' });
+        }
+
+        const query = `
+            INSERT INTO inquiries (
+                id, listing_id, user_name, user_phone, user_address, 
+                created_at, listing_title, listing_address, listing_price, 
+                user_email, contact_method, message, plan_to, status
+            ) VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7, $8, $9, $10, $11, $12, $13)
+            RETURNING *;
+        `;
+        const values = [
+            id, listingId, userName, userPhone, userAddress,
+            listingTitle, listingAddress, String(listingPrice),
+            userEmail, contactMethod, message, planTo, status
+        ];
+
+        const result = await pool.query(query, values);
+        const row = result.rows[0];
+
+        res.status(201).json({
+            success: true,
+            message: 'Enquiry submitted successfully',
+            inquiry: {
+                id: row.id,
+                listingId: row.listing_id,
+                userName: row.user_name,
+                userPhone: row.user_phone,
+                userAddress: row.user_address,
+                listingTitle: row.listing_title,
+                listingAddress: row.listing_address,
+                listingPrice: row.listing_price,
+                userEmail: row.user_email,
+                contactMethod: row.contact_method,
+                message: row.message,
+                planTo: row.plan_to,
+                status: row.status,
+                createdAt: row.created_at
+            }
+        });
+    } catch (err) {
+        console.error('POST /api/enquiry error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+const handleGetEnquiries = async (req, res) => {
+    try {
+        const result = await pool.query('SELECT * FROM inquiries ORDER BY created_at DESC');
+        const inquiries = result.rows.map(i => ({
+            id: i.id,
+            listingId: i.listing_id,
+            userName: i.user_name,
+            userPhone: i.user_phone,
+            userAddress: i.user_address,
+            listingTitle: i.listing_title,
+            listingAddress: i.listing_address,
+            listingPrice: i.listing_price,
+            userEmail: i.user_email,
+            contactMethod: i.contact_method,
+            message: i.message,
+            planTo: i.plan_to,
+            status: i.status,
+            createdAt: i.created_at
+        }));
+        res.json(inquiries);
+    } catch (err) {
+        console.error('GET /api/enquiry error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+app.post('/api/enquiry', handleCreateEnquiry);
+app.post('/api/enquiries', handleCreateEnquiry);
+app.post('/api/inquiries', handleCreateEnquiry);
+app.post('/api/inquiry', handleCreateEnquiry);
+
+app.get('/api/enquiry', handleGetEnquiries);
+app.get('/api/enquiries', handleGetEnquiries);
+app.get('/api/inquiries', handleGetEnquiries);
+app.get('/api/inquiry', handleGetEnquiries);
+
+// --- User Properties / Listings Endpoints (GET /api/properties & /api/properties/:id) ---
+const handleGetProperties = async (req, res) => {
+    try {
+        const ownerRows = await pool.query('SELECT * FROM owner_listings ORDER BY created_at DESC');
+        const properties = ownerRows.rows.map(o => ({
+            id: o.id,
+            category: o.category,
+            title: o.title,
+            location: o.location,
+            landmark: o.landmark,
+            street: o.street,
+            pincode: o.pincode,
+            locationPrivacy: o.location_privacy,
+            lat: o.lat,
+            lng: o.lng,
+            rentAmount: o.rent_amount,
+            depositAmount: o.deposit_amount || 0,
+            maintenanceAmount: o.maintenance_amount || 0,
+            furnishing: o.furnishing || '',
+            availableFrom: o.available_from || '',
+            preferredTenants: o.preferred_tenants || '',
+            leaseDuration: o.lease_duration || '',
+            foodPreference: o.food_preference || '',
+            parking: o.parking || '',
+            lockInPeriod: o.lock_in_period || '',
+            noticePeriod: o.notice_period || '',
+            bogithuAmount: o.bogithu_amount,
+            bogithuYears: o.bogithu_years,
+            description: o.description,
+            contactName: o.contact_name,
+            contactPhone: o.contact_phone,
+            status: o.status,
+            ownerUid: o.owner_uid,
+            ownerPhone: o.owner_phone,
+            ownerEmail: o.owner_email,
+            isFreeUpload: o.is_free_upload,
+            feePaid: o.fee_paid,
+            media: o.media || [],
+            internalDocuments: o.internal_documents || [],
+            createdAt: o.created_at,
+            price: o.price,
+            sqft: o.sqft,
+            beds: o.beds,
+            baths: o.baths,
+            floors: o.floors,
+            transactionType: o.transaction_type,
+            viewsCount: o.views_count || 0,
+            clicksCount: o.clicks_count || 0
+        }));
+        res.json(properties);
+    } catch (err) {
+        console.error('GET /api/properties error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+const handleGetPropertyById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const ownerRows = await pool.query('SELECT * FROM owner_listings WHERE id = $1', [id]);
+        if (ownerRows.rows.length > 0) {
+            const o = ownerRows.rows[0];
+            return res.json({
+                id: o.id,
+                category: o.category,
+                title: o.title,
+                location: o.location,
+                landmark: o.landmark,
+                street: o.street,
+                pincode: o.pincode,
+                locationPrivacy: o.location_privacy,
+                lat: o.lat,
+                lng: o.lng,
+                rentAmount: o.rent_amount,
+                depositAmount: o.deposit_amount || 0,
+                maintenanceAmount: o.maintenance_amount || 0,
+                furnishing: o.furnishing || '',
+                availableFrom: o.available_from || '',
+                preferredTenants: o.preferred_tenants || '',
+                leaseDuration: o.lease_duration || '',
+                foodPreference: o.food_preference || '',
+                parking: o.parking || '',
+                lockInPeriod: o.lock_in_period || '',
+                noticePeriod: o.notice_period || '',
+                bogithuAmount: o.bogithu_amount,
+                bogithuYears: o.bogithu_years,
+                description: o.description,
+                contactName: o.contact_name,
+                contactPhone: o.contact_phone,
+                status: o.status,
+                ownerUid: o.owner_uid,
+                ownerPhone: o.owner_phone,
+                ownerEmail: o.owner_email,
+                isFreeUpload: o.is_free_upload,
+                feePaid: o.fee_paid,
+                media: o.media || [],
+                internalDocuments: o.internal_documents || [],
+                createdAt: o.created_at,
+                price: o.price,
+                sqft: o.sqft,
+                beds: o.beds,
+                baths: o.baths,
+                floors: o.floors,
+                transactionType: o.transaction_type,
+                viewsCount: o.views_count || 0,
+                clicksCount: o.clicks_count || 0
+            });
+        }
+
+        // Check if it's a plot
+        const plotRows = await pool.query('SELECT * FROM plots WHERE id = $1', [id]);
+        if (plotRows.rows.length > 0) {
+            const p = plotRows.rows[0];
+            return res.json({
+                id: p.id,
+                layoutId: p.layout_id,
+                status: p.status,
+                area: p.area,
+                price: p.price,
+                owner: p.owner,
+                notes: p.notes,
+                points: p.points_json,
+                labelOffset: p.label_offset_json,
+                classification: p.classification,
+                category: p.category,
+                isBuilding: p.is_building,
+                isCommon: p.is_common,
+                viewsCount: p.views_count || 0
+            });
+        }
+
+        return res.status(404).json({ error: 'Property not found' });
+    } catch (err) {
+        console.error('GET /api/properties/:id error:', err);
+        res.status(500).json({ error: err.message });
+    }
+};
+
+app.get('/api/properties', handleGetProperties);
+app.get('/api/listings', handleGetProperties);
+app.get('/api/properties/:id', handleGetPropertyById);
+app.get('/api/listings/:id', handleGetPropertyById);
+
+// --- Public Route Handlers (for load testing & direct navigation) ---
+app.get('/properties', (req, res) => {
+    res.json({ message: 'Property Docs Properties Directory Online', status: 'ok' });
+});
+
+app.get('/properties/:id', (req, res) => {
+    res.json({ message: `Property Docs Listing ${req.params.id}`, id: req.params.id, status: 'ok' });
 });
 
 // --- Layouts ---

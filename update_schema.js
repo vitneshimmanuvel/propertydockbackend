@@ -25,6 +25,21 @@ async function main() {
         await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS floors INTEGER DEFAULT 0;`);
         await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS transaction_type TEXT DEFAULT 'all';`);
         await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS internal_documents JSONB DEFAULT '[]'::jsonb;`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS clicks_count INTEGER DEFAULT 0;`);
+        await pool.query(`ALTER TABLE plots ADD COLUMN IF NOT EXISTS views_count INTEGER DEFAULT 0;`);
+
+        // Add rental & lease specific attributes
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS deposit_amount DOUBLE PRECISION DEFAULT 0;`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS maintenance_amount DOUBLE PRECISION DEFAULT 0;`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS furnishing TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS available_from TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS preferred_tenants TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS lease_duration TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS food_preference TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS parking TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS lock_in_period TEXT DEFAULT '';`);
+        await pool.query(`ALTER TABLE owner_listings ADD COLUMN IF NOT EXISTS notice_period TEXT DEFAULT '';`);
 
         // Update inquiries table schema
         await pool.query(`
