@@ -21,6 +21,10 @@ app.get('/', (req, res) => {
     res.json({ message: 'Property Docs API Server Online', health: '/api/health' });
 });
 
+app.get('/ads.txt', (req, res) => {
+    res.type('text/plain').send('google.com, pub-2684766467509161, DIRECT, f08c47fec0942fa0\n');
+});
+
 // Multer for file uploads (memory storage for Cloudinary streaming)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
